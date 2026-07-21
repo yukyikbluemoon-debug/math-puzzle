@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Math Puzzle - แก้สมการเชิงเส้น</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Auth Screen -->
+    <div id="screen-auth" class="screen active">
+      <div class="card auth-card">
+        <div class="auth-logo">∑</div>
+        <h1 class="game-title">Math Puzzle</h1>
+        <p class="subtitle">ฝึกแก้สมการเชิงเส้นตัวแปรเดียว</p>
+        <div class="field">
+          <label>ชื่อผู้เล่น</label>
+          <input type="text" id="auth-name" placeholder="กรอกชื่อ" maxlength="20">
+        </div>
+        <div class="field">
+          <label>PIN (ตัวเลข 4-6 หลัก)</label>
+          <input type="password" id="auth-pin" placeholder="••••" maxlength="6" inputmode="numeric">
+        </div>
+        <div class="auth-error" id="auth-error"></div>
+        <button class="btn btn-primary btn-block" id="btn-login">เข้าสู่ระบบ / สร้างบัญชี</button>
+        <div class="auth-divider">หรือ</div>
+        <button class="btn btn-ghost btn-block" id="btn-guest"> เล่นแบบ Guest</button>
+        <p class="auth-hint">ถ้าชื่อนี้ยังไม่เคยเล่น ระบบจะสร้างบัญชีให้อัตโนมัติ</p>
+      </div>
+    </div>
+
+    <!-- Home Screen -->
+    <div id="screen-home" class="screen">
+      <div class="topbar">
+        <div class="user-chip">
+          <div class="level-badge" id="home-level">1</div>
+          <div class="user-chip-info">
+            <div class="user-chip-name" id="home-name">Guest</div>
+            <div class="xp-bar"><div class="xp-bar-fill segmented" id="home-xp-fill" style="width:0%"></div></div>
+            <div class="xp-caption" id="home-xp-text">0 / 100 XP</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost" id="btn-logout">ออก</button>
+      </div>
+      <div class="card">
+        <h1 class="game-title">เลือกความยาก</h1>
+        <p class="subtitle">เกมละ 5 ข้อ • ทุกโจทย์คำตอบเป็นจำนวนเต็ม</p>
+        <div class="level-grid">
+          <button class="level-card" data-level="1">
+            <div class="level-icon"></div>
+            <div class="level-name">ระดับ 1</div>
+            <div class="level-desc">x + a = b</div>
+          </button>
+          <button class="level-card" data-level="2">
+            <div class="level-icon">🌿</div>
+            <div class="level-name">ระดับ 2</div>
+            <div class="level-desc">ax = b</div>
+          </button>
+          <button class="level-card" data-level="3">
+            <div class="level-icon"></div>
+            <div class="level-name">ระดับ 3</div>
+            <div class="level-desc">ax + b = c</div>
+          </button>
+          <button class="level-card" data-level="4">
+            <div class="level-icon">🔥</div>
+            <div class="level-name">ระดับ 4</div>
+            <div class="level-desc">ax + b = cx + d</div>
+          </button>
+        </div>
+        <div class="leaderboard" id="home-leaderboard">
+          <div class="leaderboard-header">
+            <div class="leaderboard-title">🏆 อันดับผู้เล่น</div>
+          </div>
+          <div id="leaderboard-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="screen-game" class="screen">
+      <div class="game-topbar">
+        <div class="stat-chip">📊 <b id="game-progress">1/5</b></div>
+        <div class="stat-chip">⭐ <b id="game-score">0</b></div>
+        <div class="stat-chip">⏱️ <b id="game-timer">00:00</b></div>
+      </div>
+      <div class="card game-card">
+        <div class="equation-display" id="equation-display">
+          <!-- สมการจะแสดงที่นี่ -->
+        </div>
+        <div class="answer-section">
+          <label class="answer-label">x = ?</label>
+          <input type="number" id="answer-input" class="answer-input" placeholder="ตอบเป็นจำนวนเต็ม" inputmode="numeric">
+          <button class="btn btn-primary" id="btn-submit">ส่งคำตอบ</button>
+        </div>
+        <div class="feedback" id="feedback"></div>
+      </div>
+    </div>
+
+    <!-- Solution Screen (Interactive Step) -->
+    <div id="screen-solution" class="screen">
+      <div class="card solution-card">
+        <div class="solution-header" id="solution-header">
+          <!-- ถูก/ผิด -->
+        </div>
+        <div class="solution-equation" id="solution-equation">
+          <!-- สมการโจทย์ -->
+        </div>
+        <div class="solution-steps" id="solution-steps">
+          <!-- ขั้นตอนจะแสดงทีละขั้น -->
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-next-step">ดูขั้นตอนถัดไป →</button>
+        <button class="btn btn-secondary btn-block" id="btn-next-question" style="display:none;">ข้อถัดไป →</button>
+      </div>
+    </div>
+
+    <!-- Result Screen -->
+    <div id="screen-result" class="screen">
+      <div class="card result-card">
+        <div class="level-badge big" id="result-level">1</div>
+        <h2 id="result-title">จบเกม!</h2>
+        <div class="result-datetime" id="result-datetime"></div>
+        <div class="xp-gain-banner" id="result-xp">+0 XP</div>
+        <div class="score-grid">
+          <div class="score-cell">
+            <div class="num" id="result-correct">0</div>
+            <div class="label">ตอบถูก</div>
+          </div>
+          <div class="score-cell">
+            <div class="num" id="result-wrong">0</div>
+            <div class="label">ตอบผิด</div>
+          </div>
+          <div class="score-cell">
+            <div class="num" id="result-time">00:00</div>
+            <div class="label">เวลาที่ใช้</div>
+          </div>
+        </div>
+        <div class="result-buttons">
+          <button class="btn btn-primary" id="btn-play-again">🔄 เล่นอีกครั้ง</button>
+          <button class="btn btn-secondary" id="btn-home"> หน้าหลัก</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="game.js"></script>
+</body>
+</html>
