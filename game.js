@@ -2,7 +2,7 @@
 // Supabase Config - ใช้โปรเจคเดียวกับ WordPuzzle
 // ============================================
 const SUPABASE_URL = 'https://pwrhnmvhwhellfbznczb.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3cmhudmZ3aGVsbGZienpuY3piIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAwMDAwMDAsImV4cCI6MjA0NTU3NjAwMH0.placeholder_replace_with_your_key';
+const SUPABASE_ANON_KEY = 'sb_publishable_zmIZ9aucZsRMJrySDe0uIQ_W4OgndeO';
 
 // ⚠️ เปลี่ยน SUPABASE_ANON_KEY เป็น key จริงจาก Supabase Dashboard ของคุณ
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
