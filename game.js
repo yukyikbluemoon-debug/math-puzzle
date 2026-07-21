@@ -22,6 +22,7 @@ let startTime = null;
 let timerInterval = null;
 let currentStep = 0;
 let solutionSteps = [];
+let levelAccuracyCache = {};
 
 // ============================================
 // Utility Functions
@@ -174,6 +175,7 @@ async function handleLogin() {
     updateHomeUI();
     showScreen('screen-home');
     loadLeaderboard();
+    loadLevelAccuracy();
   } catch (err) {
     console.error(err);
     errorEl.textContent = 'เกิดข้อผิดพลาด: ' + err.message;
@@ -184,6 +186,7 @@ function handleGuest() {
   currentUser = { name: 'Guest', xp: 0, level: 1, id: 'guest-' + Date.now() };
   updateHomeUI();
   showScreen('screen-home');
+  loadLevelAccuracy();
 }
 
 function handleLogout() {
@@ -566,6 +569,88 @@ function renderTrendChart(attempts) {
 }
 
 // ============================================
+// Level Accuracy Badges + Mastery Nudge
+// ============================================
+async function loadLevelAccuracy() {
+  if (!isRealUser()) {
+    levelAccuracyCache = {};
+    renderLevelAccuracyBadges();
+    return;
+  }
+  try {
+    const { data, error } = await db
+      .from('math_attempts')
+      .select('level, is_correct')
+      .eq('player_id', currentUser.id);
+    if (error) throw error;
+
+    const byLevel = { 1: { correct: 0, total: 0 }, 2: { correct: 0, total: 0 }, 3: { correct: 0, total: 0 }, 4: { correct: 0, total: 0 } };
+    (data || []).forEach(a => {
+      if (!byLevel[a.level]) return;
+      byLevel[a.level].total++;
+      if (a.is_correct) byLevel[a.level].correct++;
+    });
+
+    levelAccuracyCache = {};
+    [1, 2, 3, 4].forEach(lv => {
+      const { correct, total } = byLevel[lv];
+      levelAccuracyCache[lv] = { total, pct: total > 0 ? Math.round((correct / total) * 100) : 0 };
+    });
+
+    renderLevelAccuracyBadges();
+  } catch (err) {
+    console.error('Error loading level accuracy:', err);
+  }
+}
+
+function renderLevelAccuracyBadges() {
+  [1, 2, 3, 4].forEach(lv => {
+    const el = document.getElementById(`level-acc-${lv}`);
+    if (!el) return;
+    const stats = levelAccuracyCache[lv];
+    // ต้องมีอย่างน้อย 3 ข้อขึ้นไปถึงจะโชว์ % กันข้อมูลน้อยเกินไปจนเข้าใจผิด
+    if (!stats || stats.total < 3) {
+      el.textContent = '';
+      el.classList.remove('mastered');
+      return;
+    }
+    // ต้องมีอย่างน้อย 5 ข้อถึงจะนับว่า "เชี่ยวชาญ" กันความบังเอิญจากตัวอย่างน้อย
+    const isMastered = stats.total >= 5 && stats.pct === 100;
+    el.textContent = `${stats.pct}%`;
+    el.classList.toggle('mastered', isMastered);
+  });
+}
+
+function handleLevelClick(level) {
+  const stats = levelAccuracyCache[level];
+  const isMastered = stats && stats.total >= 5 && stats.pct === 100;
+  if (isMastered && level < 4) {
+    showMasteryModal(level);
+  } else {
+    startGame(level);
+  }
+}
+
+function showMasteryModal(level) {
+  document.getElementById('modal-message').textContent =
+    `ระดับ ${level} คุณตอบถูกครบ 100% แล้ว (เล่นมาแล้วอย่างน้อย 5 ข้อ) ลองท้าทายตัวเองด้วยระดับที่ยากขึ้นดูไหม? หรือจะเล่นระดับนี้ต่อก็ได้`;
+  document.getElementById('mastery-modal').style.display = 'flex';
+
+  document.getElementById('modal-btn-next').onclick = () => {
+    closeMasteryModal();
+    startGame(level + 1);
+  };
+  document.getElementById('modal-btn-stay').onclick = () => {
+    closeMasteryModal();
+    startGame(level);
+  };
+}
+
+function closeMasteryModal() {
+  document.getElementById('mastery-modal').style.display = 'none';
+}
+
+// ============================================
 // Event Listeners
 // ============================================
 document.getElementById('btn-login').addEventListener('click', handleLogin);
@@ -575,7 +660,7 @@ document.getElementById('btn-logout').addEventListener('click', handleLogout);
 document.querySelectorAll('.level-card').forEach(card => {
   card.addEventListener('click', () => {
     const level = parseInt(card.dataset.level);
-    startGame(level);
+    handleLevelClick(level);
   });
 });
 
@@ -593,6 +678,7 @@ document.getElementById('btn-play-again').addEventListener('click', () => {
 document.getElementById('btn-home').addEventListener('click', () => {
   updateHomeUI();
   loadLeaderboard();
+  loadLevelAccuracy();
   showScreen('screen-home');
 });
 
@@ -604,5 +690,6 @@ document.getElementById('btn-view-stats').addEventListener('click', loadStats);
 document.getElementById('btn-stats-home').addEventListener('click', () => {
   updateHomeUI();
   loadLeaderboard();
+  loadLevelAccuracy();
   showScreen('screen-home');
 });

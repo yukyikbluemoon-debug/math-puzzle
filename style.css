@@ -407,6 +407,40 @@ body {
 }
 .trend-chart svg { width: 100%; height: auto; display: block; }
 
+.level-accuracy {
+  margin-top: 6px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--math-gold);
+  min-height: 1em;
+}
+.level-accuracy.mastered { color: var(--math-green); }
+.level-accuracy.mastered::after { content: ' 🌟'; }
+
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10, 22, 40, 0.72);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal-box {
+  background: linear-gradient(180deg, var(--bg-panel), var(--bg-panel-2));
+  border: 1px solid var(--border-soft);
+  border-radius: 22px;
+  padding: 28px 24px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  box-shadow: var(--shadow-deep);
+  animation: screenIn 0.25s ease;
+}
+.modal-icon { font-size: 2.2rem; margin-bottom: 8px; }
+.modal-title { font-family: var(--font-display); font-size: 1.15rem; margin: 0 0 8px; }
+.modal-message { color: var(--text-muted); font-size: 0.9rem; margin: 0 0 20px; line-height: 1.6; }
+.modal-buttons { display: flex; flex-direction: column; gap: 10px; }
+
 /* Responsive */
 @media (max-width: 480px) {
   .card { padding: 24px 16px; border-radius: 18px; }

@@ -54,21 +54,25 @@
             <div class="level-icon"></div>
             <div class="level-name">ระดับ 1</div>
             <div class="level-desc">x + a = b</div>
+            <div class="level-accuracy" id="level-acc-1"></div>
           </button>
           <button class="level-card" data-level="2">
             <div class="level-icon">🌿</div>
             <div class="level-name">ระดับ 2</div>
             <div class="level-desc">ax = b</div>
+            <div class="level-accuracy" id="level-acc-2"></div>
           </button>
           <button class="level-card" data-level="3">
             <div class="level-icon"></div>
             <div class="level-name">ระดับ 3</div>
             <div class="level-desc">ax + b = c</div>
+            <div class="level-accuracy" id="level-acc-3"></div>
           </button>
           <button class="level-card" data-level="4">
             <div class="level-icon">🔥</div>
             <div class="level-name">ระดับ 4</div>
             <div class="level-desc">ax + b = cx + d</div>
+            <div class="level-accuracy" id="level-acc-4"></div>
           </button>
         </div>
         <div class="leaderboard" id="home-leaderboard">
@@ -164,6 +168,19 @@
         </div>
 
         <button class="btn btn-secondary btn-block" id="btn-stats-home">🏠 กลับหน้าหลัก</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mastery Nudge Modal -->
+  <div id="mastery-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-icon">🌟</div>
+      <h3 class="modal-title">เก่งมากระดับนี้!</h3>
+      <p class="modal-message" id="modal-message"></p>
+      <div class="modal-buttons">
+        <button class="btn btn-primary btn-block" id="modal-btn-next">ลองระดับถัดไป</button>
+        <button class="btn btn-ghost btn-block" id="modal-btn-stay">เล่นระดับนี้ต่อ</button>
       </div>
     </div>
   </div>
