@@ -146,30 +146,50 @@ async function handleLogin() {
   errorEl.textContent = 'กำลังโหลด...';
 
   try {
-    // ✅ แก้ไข: ใช้ db แทน supabase
-    const { data: existing, error } = await db
-      .from('math_scores')
+    // 1) ตรวจ/สร้างบัญชีกลาง (ใช้ร่วมกับ WordPuzzle — เช็คแค่ชื่อ+PIN)
+    const { data: existingAccount, error: accError } = await db
+      .from('accounts')
       .select('*')
       .eq('name', name)
       .limit(1);
+    if (accError) throw accError;
 
-    if (error) throw error;
-
-    if (existing && existing.length > 0) {
-      if (existing[0].pin !== pin) {
+    let account;
+    if (existingAccount && existingAccount.length > 0) {
+      if (existingAccount[0].pin !== pin) {
         errorEl.textContent = 'PIN ไม่ถูกต้อง';
         return;
       }
-      currentUser = existing[0];
+      account = existingAccount[0];
     } else {
-      const { data: newUser, error: insertError } = await db
+      const { data: newAccount, error: newAccError } = await db
+        .from('accounts')
+        .insert([{ name, pin }])
+        .select()
+        .single();
+      if (newAccError) throw newAccError;
+      account = newAccount;
+    }
+
+    // 2) ตรวจ/สร้างคะแนนของ Math Puzzle เอง ผูกกับ account_id (คะแนน/XP ไม่รวมกับ WordPuzzle)
+    const { data: existingScore, error: scoreError } = await db
+      .from('math_scores')
+      .select('*')
+      .eq('account_id', account.id)
+      .limit(1);
+    if (scoreError) throw scoreError;
+
+    if (existingScore && existingScore.length > 0) {
+      currentUser = existingScore[0];
+    } else {
+      const { data: newScore, error: insertError } = await db
         .from('math_scores')
-        .insert([{ name, pin, xp: 0, level: 1, games_played: 0, total_correct: 0 }])
+        .insert([{ name, pin, account_id: account.id, xp: 0, level: 1, games_played: 0, total_correct: 0 }])
         .select()
         .single();
 
       if (insertError) throw insertError;
-      currentUser = newUser;
+      currentUser = newScore;
     }
 
     updateHomeUI();
