@@ -4,6 +4,7 @@
 const SUPABASE_URL = 'https://pwrhnmvhwhellfbznczb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_zmIZ9aucZsRMJrySDe0uIQ_W4OgndeO';
 
+
 // ⚠️ เปลี่ยน SUPABASE_ANON_KEY เป็น key จริงจาก Supabase Dashboard ของคุณ
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
