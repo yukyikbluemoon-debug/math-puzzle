@@ -2,11 +2,11 @@
 // Supabase Config - ใช้โปรเจคเดียวกับ WordPuzzle
 // ============================================
 const SUPABASE_URL = 'https://pwrhnmvhwhellfbznczb.supabase.co';
+// ⚠️ อย่าลืมใส่ ANON KEY จริงของคุณตรงนี้ (เอา placeholder ออก)
 const SUPABASE_ANON_KEY = 'sb_publishable_zmIZ9aucZsRMJrySDe0uIQ_W4OgndeO';
 
-
-// ⚠️ เปลี่ยน SUPABASE_ANON_KEY เป็น key จริงจาก Supabase Dashboard ของคุณ
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ✅ แก้ไข: ใช้ชื่อตัวแปรว่า 'db' แทน 'supabase' เพื่อป้องกันชื่อชนกับ Global Object
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================
 // Game State
@@ -30,15 +30,6 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
@@ -48,6 +39,12 @@ function formatTime(seconds) {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // ============================================
@@ -101,10 +98,8 @@ function generateQuestion(level) {
       x = randInt(1, 8);
       b = randInt(1, 10);
       d = (a - c) * x + b;
-      // ตรวจสอบว่า d เป็นบวกและสมการสมเหตุสมผล
-      if (d < 1 || d > 20) {
-        return generateQuestion(level); // สุ่มใหม่
-      }
+      if (d < 1 || d > 20) return generateQuestion(level);
+      
       equation = `${a}x + ${b} = ${c}x + ${d}`;
       const leftCoeff = a - c;
       const rightConst = d - b;
@@ -147,11 +142,11 @@ async function handleLogin() {
     return;
   }
 
-  errorEl.textContent = '';
+  errorEl.textContent = 'กำลังโหลด...';
 
   try {
-    // เช็คชื่อใน database
-    const { data: existing, error } = await supabase
+    // ✅ แก้ไข: ใช้ db แทน supabase
+    const { data: existing, error } = await db
       .from('math_scores')
       .select('*')
       .eq('name', name)
@@ -160,15 +155,13 @@ async function handleLogin() {
     if (error) throw error;
 
     if (existing && existing.length > 0) {
-      // มีชื่อแล้ว - เช็ค PIN
       if (existing[0].pin !== pin) {
         errorEl.textContent = 'PIN ไม่ถูกต้อง';
         return;
       }
       currentUser = existing[0];
     } else {
-      // สร้างบัญชีใหม่
-      const { data: newUser, error: insertError } = await supabase
+      const { data: newUser, error: insertError } = await db
         .from('math_scores')
         .insert([{ name, pin, xp: 0, level: 1, games_played: 0, total_correct: 0 }])
         .select()
@@ -219,7 +212,8 @@ function updateHomeUI() {
 async function loadLeaderboard() {
   const listEl = document.getElementById('leaderboard-list');
   try {
-    const { data, error } = await supabase
+    // ✅ แก้ไข: ใช้ db แทน supabase
+    const { data, error } = await db
       .from('math_scores')
       .select('name, xp, level')
       .order('xp', { ascending: false })
@@ -233,7 +227,7 @@ async function loadLeaderboard() {
     }
 
     listEl.innerHTML = data.map((u, i) => {
-      const rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '' : String(i + 1);
+      const rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : String(i + 1);
       const isMe = currentUser && u.name === currentUser.name;
       return `
         <div class="leaderboard-row ${isMe ? 'me' : ''}">
@@ -247,12 +241,6 @@ async function loadLeaderboard() {
     console.error(err);
     listEl.innerHTML = '<div class="leaderboard-empty">โหลดอันดับไม่ได้</div>';
   }
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 // ============================================
@@ -307,7 +295,7 @@ function submitAnswer() {
 
   if (isCorrect) {
     correctCount++;
-    score += 10 + Math.max(0, 5 - currentQuestionIndex); // โบนัสตอบเร็ว
+    score += 10 + Math.max(0, 5 - currentQuestionIndex);
     feedback.className = 'feedback correct';
     feedback.textContent = '✅ ถูกต้อง! เก่งมาก!';
   } else {
@@ -317,12 +305,9 @@ function submitAnswer() {
   }
 
   document.getElementById('game-score').textContent = score;
-
-  // เก็บ solution steps สำหรับหน้าเฉลย
   solutionSteps = q.steps;
   currentStep = 0;
 
-  // หน่วงเวลาเล็กน้อยแล้วไปหน้าเฉลย
   setTimeout(() => {
     showSolution(isCorrect, q);
   }, 1200);
@@ -333,7 +318,7 @@ function showSolution(isCorrect, q) {
 
   const header = document.getElementById('solution-header');
   header.className = `solution-header ${isCorrect ? 'correct' : 'wrong'}`;
-  header.textContent = isCorrect ? '🎉 ถูกต้อง!' : ' ผิด! มาดูวิธีทำกัน';
+  header.textContent = isCorrect ? '🎉 ถูกต้อง!' : '❌ ผิด! มาดูวิธีทำกัน';
 
   document.getElementById('solution-equation').textContent = q.equation;
 
@@ -341,12 +326,9 @@ function showSolution(isCorrect, q) {
   stepsEl.innerHTML = '';
   currentStep = 0;
 
-  const nextStepBtn = document.getElementById('btn-next-step');
-  const nextQBtn = document.getElementById('btn-next-question');
-  nextStepBtn.style.display = 'block';
-  nextQBtn.style.display = 'none';
+  document.getElementById('btn-next-step').style.display = 'block';
+  document.getElementById('btn-next-question').style.display = 'none';
 
-  // แสดงขั้นตอนแรกทันที
   showNextStep();
 }
 
@@ -392,16 +374,14 @@ function endGame() {
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   const xpGained = score;
 
-  // อัพเดทคะแนนใน database
-  if (currentUser && currentUser.id && !currentUser.id.startsWith('guest')) {
+  if (currentUser && currentUser.id && !String(currentUser.id).startsWith('guest')) {
     updateScore(xpGained);
   }
 
-  // แสดงหน้าผลลัพธ์
   document.getElementById('result-level').textContent = currentLevel;
   document.getElementById('result-title').textContent =
     correctCount === 5 ? '🏆 สมบูรณ์แบบ!' :
-    correctCount >= 3 ? ' เก่งมาก!' : '💪 ลองใหม่นะ!';
+    correctCount >= 3 ? '👍 เก่งมาก!' : '💪 ลองใหม่นะ!';
   document.getElementById('result-datetime').textContent = new Date().toLocaleString('th-TH');
   document.getElementById('result-xp').textContent = `+${xpGained} XP`;
   document.getElementById('result-correct').textContent = correctCount;
@@ -416,7 +396,8 @@ async function updateScore(xpGained) {
     const newXp = (currentUser.xp || 0) + xpGained;
     const newLevel = Math.floor(newXp / 100) + 1;
 
-    const { error } = await supabase
+    // ✅ แก้ไข: ใช้ db แทน supabase
+    const { error } = await db
       .from('math_scores')
       .update({
         xp: newXp,
@@ -466,7 +447,6 @@ document.getElementById('btn-home').addEventListener('click', () => {
   showScreen('screen-home');
 });
 
-// Enter key on auth
 document.getElementById('auth-pin').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') handleLogin();
 });
