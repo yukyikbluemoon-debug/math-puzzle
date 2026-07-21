@@ -292,6 +292,7 @@ function submitAnswer() {
 
   const q = questions[currentQuestionIndex];
   const isCorrect = answer === q.answer;
+  logAttempt(currentLevel, isCorrect);
 
   if (isCorrect) {
     correctCount++;
@@ -417,6 +418,154 @@ async function updateScore(xpGained) {
 }
 
 // ============================================
+// Stats (per-attempt logging + parent-facing view)
+// ============================================
+function isRealUser() {
+  return currentUser && currentUser.id && !String(currentUser.id).startsWith('guest');
+}
+
+async function logAttempt(level, isCorrect) {
+  if (!isRealUser()) return; // ไม่เก็บสถิติของ Guest
+  try {
+    const { error } = await db
+      .from('math_attempts')
+      .insert({ player_id: currentUser.id, level: level, is_correct: isCorrect });
+    if (error) throw error;
+  } catch (err) {
+    console.error('Error logging attempt:', err);
+  }
+}
+
+async function loadStats() {
+  showScreen('screen-stats');
+
+  if (!isRealUser()) {
+    document.getElementById('stats-player-name').textContent = 'ดูสถิติได้เฉพาะผู้เล่นที่ล็อกอินเท่านั้น (ไม่ใช่ Guest)';
+    document.getElementById('stats-level-bars').innerHTML = '';
+    document.getElementById('stats-weak-level').textContent = '';
+    document.getElementById('stats-trend-chart').innerHTML = '';
+    document.getElementById('stats-trend-summary').textContent = '';
+    return;
+  }
+
+  document.getElementById('stats-player-name').textContent = currentUser.name;
+
+  try {
+    const { data, error } = await db
+      .from('math_attempts')
+      .select('level, is_correct, created_at')
+      .eq('player_id', currentUser.id)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    renderLevelBars(data || []);
+    renderTrendChart(data || []);
+  } catch (err) {
+    console.error('Error loading stats:', err);
+    document.getElementById('stats-level-bars').innerHTML = '<div class="level-bar-empty">โหลดสถิติไม่ได้</div>';
+  }
+}
+
+function renderLevelBars(attempts) {
+  const container = document.getElementById('stats-level-bars');
+  const weakEl = document.getElementById('stats-weak-level');
+
+  if (attempts.length === 0) {
+    container.innerHTML = '<div class="level-bar-empty">ยังไม่มีข้อมูล ลองเล่นสักเกมก่อนนะ!</div>';
+    weakEl.textContent = '';
+    return;
+  }
+
+  const byLevel = { 1: { correct: 0, total: 0 }, 2: { correct: 0, total: 0 }, 3: { correct: 0, total: 0 }, 4: { correct: 0, total: 0 } };
+  attempts.forEach(a => {
+    if (!byLevel[a.level]) return;
+    byLevel[a.level].total++;
+    if (a.is_correct) byLevel[a.level].correct++;
+  });
+
+  // หาระดับที่แม่นยำต่ำสุด (ต้องมีอย่างน้อย 3 ข้อขึ้นไปถึงจะนับ ไม่งั้นข้อมูลน้อยเกินไปจะเข้าใจผิดได้)
+  let weakestLevel = null;
+  let weakestPct = 101;
+  [1, 2, 3, 4].forEach(lv => {
+    const { correct, total } = byLevel[lv];
+    if (total >= 3) {
+      const pct = Math.round((correct / total) * 100);
+      if (pct < weakestPct) { weakestPct = pct; weakestLevel = lv; }
+    }
+  });
+
+  container.innerHTML = [1, 2, 3, 4].map(lv => {
+    const { correct, total } = byLevel[lv];
+    const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const weakClass = weakestLevel === lv ? 'weak' : '';
+    return `
+      <div class="level-bar-row">
+        <div class="level-bar-label">ระดับ ${lv}</div>
+        <div class="level-bar-track">
+          <div class="level-bar-fill ${weakClass}" style="width:${pct}%"></div>
+        </div>
+        <div class="level-bar-pct">${total > 0 ? pct + '%' : '-'}</div>
+      </div>
+    `;
+  }).join('');
+
+  weakEl.textContent = weakestLevel
+    ? `จุดที่ควรฝึกเพิ่ม: ระดับ ${weakestLevel} (แม่นยำ ${weakestPct}%)`
+    : 'เล่นแต่ละระดับให้ครบ 3 ข้อขึ้นไป เพื่อดูจุดที่ควรฝึกเพิ่ม';
+}
+
+function renderTrendChart(attempts) {
+  const chartEl = document.getElementById('stats-trend-chart');
+  const summaryEl = document.getElementById('stats-trend-summary');
+
+  if (attempts.length === 0) {
+    chartEl.innerHTML = '';
+    summaryEl.textContent = '';
+    return;
+  }
+
+  // จัดกลุ่มตามวันที่เล่น (เอา 14 วันล่าสุดที่มีข้อมูล)
+  const byDay = {};
+  attempts.forEach(a => {
+    const day = a.created_at.slice(0, 10); // YYYY-MM-DD
+    if (!byDay[day]) byDay[day] = { correct: 0, total: 0 };
+    byDay[day].total++;
+    if (a.is_correct) byDay[day].correct++;
+  });
+
+  const days = Object.keys(byDay).sort().slice(-14);
+
+  if (days.length < 2) {
+    chartEl.innerHTML = '<div class="level-bar-empty">เล่นอีกสักวันสองวันเพื่อดูกราฟพัฒนาการ</div>';
+    summaryEl.textContent = '';
+    return;
+  }
+
+  const points = days.map(d => Math.round((byDay[d].correct / byDay[d].total) * 100));
+  const w = 600, h = 160, pad = 14;
+  const stepX = (w - pad * 2) / (points.length - 1);
+  const coords = points.map((p, i) => [
+    pad + i * stepX,
+    h - pad - (p / 100) * (h - pad * 2)
+  ]);
+  const pathD = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
+  const dots = coords.map(c => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3.5" fill="var(--math-green)"/>`).join('');
+
+  chartEl.innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <path d="${pathD}" fill="none" stroke="var(--math-blue)" stroke-width="2.5"/>
+      ${dots}
+    </svg>
+  `;
+
+  const first = points[0], last = points[points.length - 1];
+  const diff = last - first;
+  const trendWord = diff > 5 ? `ดีขึ้น ${diff} จุด 📈` : diff < -5 ? `ลดลง ${Math.abs(diff)} จุด 📉` : 'ค่อนข้างคงที่';
+  summaryEl.textContent = `${days[0]} ถึง ${days[days.length - 1]} · แม่นยำ ${first}% → ${last}% (${trendWord})`;
+}
+
+// ============================================
 // Event Listeners
 // ============================================
 document.getElementById('btn-login').addEventListener('click', handleLogin);
@@ -449,4 +598,11 @@ document.getElementById('btn-home').addEventListener('click', () => {
 
 document.getElementById('auth-pin').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') handleLogin();
+});
+
+document.getElementById('btn-view-stats').addEventListener('click', loadStats);
+document.getElementById('btn-stats-home').addEventListener('click', () => {
+  updateHomeUI();
+  loadLeaderboard();
+  showScreen('screen-home');
 });

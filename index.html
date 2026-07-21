@@ -74,6 +74,7 @@
         <div class="leaderboard" id="home-leaderboard">
           <div class="leaderboard-header">
             <div class="leaderboard-title">🏆 อันดับผู้เล่น</div>
+            <button class="btn btn-ghost btn-small" id="btn-view-stats">📈 สถิติของฉัน</button>
           </div>
           <div id="leaderboard-list"></div>
         </div>
@@ -142,6 +143,27 @@
           <button class="btn btn-primary" id="btn-play-again">🔄 เล่นอีกครั้ง</button>
           <button class="btn btn-secondary" id="btn-home"> หน้าหลัก</button>
         </div>
+      </div>
+    </div>
+    <!-- Stats Screen -->
+    <div id="screen-stats" class="screen">
+      <div class="card">
+        <h1 class="game-title">📈 สถิติของฉัน</h1>
+        <p class="subtitle" id="stats-player-name"></p>
+
+        <div class="stats-section">
+          <h2 class="stats-heading">ความแม่นยำแต่ละระดับ</h2>
+          <div id="stats-level-bars" class="level-bars"></div>
+          <p class="stats-hint" id="stats-weak-level"></p>
+        </div>
+
+        <div class="stats-section">
+          <h2 class="stats-heading">พัฒนาการช่วง 14 วันล่าสุด</h2>
+          <div id="stats-trend-chart" class="trend-chart"></div>
+          <p class="stats-hint" id="stats-trend-summary"></p>
+        </div>
+
+        <button class="btn btn-secondary btn-block" id="btn-stats-home">🏠 กลับหน้าหลัก</button>
       </div>
     </div>
   </div>
