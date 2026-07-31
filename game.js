@@ -23,6 +23,7 @@ let timerInterval = null;
 let currentStep = 0;
 let solutionSteps = [];
 let levelAccuracyCache = {};
+let isSubmitting = false; // กันกดปุ่มส่งคำตอบรัว ๆ เพื่อปั้มคะแนน
 
 // ============================================
 // Utility Functions
@@ -299,10 +300,16 @@ function showQuestion() {
   document.getElementById('answer-input').value = '';
   document.getElementById('feedback').className = 'feedback';
   document.getElementById('feedback').textContent = '';
+
+  isSubmitting = false;
+  document.getElementById('btn-submit').disabled = false;
+  document.getElementById('answer-input').disabled = false;
   document.getElementById('answer-input').focus();
 }
 
 function submitAnswer() {
+  if (isSubmitting) return; // กันกดรัว: ระหว่างรอเปลี่ยนหน้า ห้ามส่งคำตอบซ้ำ
+
   const input = document.getElementById('answer-input');
   const answer = parseInt(input.value);
   const feedback = document.getElementById('feedback');
@@ -312,6 +319,10 @@ function submitAnswer() {
     feedback.textContent = '⚠️ กรุณากรอกตัวเลข';
     return;
   }
+
+  isSubmitting = true;
+  document.getElementById('btn-submit').disabled = true;
+  input.disabled = true;
 
   const q = questions[currentQuestionIndex];
   const isCorrect = answer === q.answer;
