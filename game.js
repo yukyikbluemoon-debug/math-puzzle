@@ -147,51 +147,14 @@ async function handleLogin() {
   errorEl.textContent = 'กำลังโหลด...';
 
   try {
-    // 1) ตรวจ/สร้างบัญชีกลาง (ใช้ร่วมกับ WordPuzzle — เช็คแค่ชื่อ+PIN)
-    const { data: existingAccount, error: accError } = await db
-      .from('accounts')
-      .select('*')
-      .eq('name', name)
-      .limit(1);
-    if (accError) throw accError;
+    // ล็อกอิน/สมัครผ่าน RPC เดียว — ตรวจ PIN ฝั่งเซิร์ฟเวอร์ทั้งหมด
+    // (ไม่มีการ select/insert/update ตาราง accounts หรือ math_scores ตรงจาก client อีกต่อไป)
+    const { data, error } = await db.rpc('math_login', { p_name: name, p_pin: pin });
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error('ไม่พบข้อมูลผู้เล่น');
 
-    let account;
-    if (existingAccount && existingAccount.length > 0) {
-      if (existingAccount[0].pin !== pin) {
-        errorEl.textContent = 'PIN ไม่ถูกต้อง';
-        return;
-      }
-      account = existingAccount[0];
-    } else {
-      const { data: newAccount, error: newAccError } = await db
-        .from('accounts')
-        .insert([{ name, pin }])
-        .select()
-        .single();
-      if (newAccError) throw newAccError;
-      account = newAccount;
-    }
-
-    // 2) ตรวจ/สร้างคะแนนของ Math Puzzle เอง ผูกกับ account_id (คะแนน/XP ไม่รวมกับ WordPuzzle)
-    const { data: existingScore, error: scoreError } = await db
-      .from('math_scores')
-      .select('*')
-      .eq('account_id', account.id)
-      .limit(1);
-    if (scoreError) throw scoreError;
-
-    if (existingScore && existingScore.length > 0) {
-      currentUser = existingScore[0];
-    } else {
-      const { data: newScore, error: insertError } = await db
-        .from('math_scores')
-        .insert([{ name, pin, account_id: account.id, xp: 0, level: 1, games_played: 0, total_correct: 0 }])
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-      currentUser = newScore;
-    }
+    // เก็บ pin ไว้ในเครื่อง (จากที่ผู้เล่นพิมพ์เอง ไม่ใช่จากเซิร์ฟเวอร์) เพื่อยืนยันตัวตนกับ RPC อื่นๆ ต่อไป
+    currentUser = { ...data[0], pin };
 
     updateHomeUI();
     showScreen('screen-home');
@@ -199,7 +162,7 @@ async function handleLogin() {
     loadLevelAccuracy();
   } catch (err) {
     console.error(err);
-    errorEl.textContent = 'เกิดข้อผิดพลาด: ' + err.message;
+    errorEl.textContent = 'เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถล็อกอินได้');
   }
 }
 
@@ -237,8 +200,9 @@ async function loadLeaderboard() {
   const listEl = document.getElementById('leaderboard-list');
   try {
     // ✅ แก้ไข: ใช้ db แทน supabase
+    // ใช้ view สาธารณะที่มีแค่ name/level/xp แทนตารางจริง (ไม่หลุด pin/account_id)
     const { data, error } = await db
-      .from('math_scores')
+      .from('math_leaderboard')
       .select('name, xp, level')
       .order('xp', { ascending: false })
       .limit(10);
@@ -428,24 +392,21 @@ function endGame() {
 
 async function updateScore(xpGained) {
   try {
-    const newXp = (currentUser.xp || 0) + xpGained;
-    const newLevel = Math.floor(newXp / 100) + 1;
-
-    // ✅ แก้ไข: ใช้ db แทน supabase
-    const { error } = await db
-      .from('math_scores')
-      .update({
-        xp: newXp,
-        level: newLevel,
-        games_played: (currentUser.games_played || 0) + 1,
-        total_correct: (currentUser.total_correct || 0) + correctCount
-      })
-      .eq('id', currentUser.id);
+    // เซิร์ฟเวอร์เป็นคนคำนวณ/ตรวจสอบ xp ใหม่เอง (จำกัดช่วงค่าที่รับได้ + เช็ค pin)
+    // แทนที่จะให้ client เขียนค่า xp/level ตรงเข้าตารางแบบเดิม
+    const { data, error } = await db.rpc('math_submit_result', {
+      p_score_id: currentUser.id,
+      p_pin: currentUser.pin,
+      p_xp_gain: xpGained,
+      p_correct: correctCount
+    });
 
     if (error) throw error;
 
-    currentUser.xp = newXp;
-    currentUser.level = newLevel;
+    if (data && data[0]) {
+      currentUser.xp = data[0].xp;
+      currentUser.level = data[0].level;
+    }
   } catch (err) {
     console.error('Error updating score:', err);
   }
@@ -461,9 +422,12 @@ function isRealUser() {
 async function logAttempt(level, isCorrect) {
   if (!isRealUser()) return; // ไม่เก็บสถิติของ Guest
   try {
-    const { error } = await db
-      .from('math_attempts')
-      .insert({ player_id: currentUser.id, level: level, is_correct: isCorrect });
+    const { error } = await db.rpc('math_log_attempt', {
+      p_score_id: currentUser.id,
+      p_pin: currentUser.pin,
+      p_level: level,
+      p_is_correct: isCorrect
+    });
     if (error) throw error;
   } catch (err) {
     console.error('Error logging attempt:', err);
@@ -485,11 +449,11 @@ async function loadStats() {
   document.getElementById('stats-player-name').textContent = currentUser.name;
 
   try {
-    const { data, error } = await db
-      .from('math_attempts')
-      .select('level, is_correct, created_at')
-      .eq('player_id', currentUser.id)
-      .order('created_at', { ascending: true });
+    // ดึงประวัติการตอบของ "ตัวเอง" ผ่าน RPC ที่ตรวจ pin ฝั่งเซิร์ฟเวอร์
+    const { data, error } = await db.rpc('math_get_attempts', {
+      p_score_id: currentUser.id,
+      p_pin: currentUser.pin
+    });
 
     if (error) throw error;
 
@@ -609,10 +573,10 @@ async function loadLevelAccuracy() {
     return;
   }
   try {
-    const { data, error } = await db
-      .from('math_attempts')
-      .select('level, is_correct')
-      .eq('player_id', currentUser.id);
+    const { data, error } = await db.rpc('math_get_attempts', {
+      p_score_id: currentUser.id,
+      p_pin: currentUser.pin
+    });
     if (error) throw error;
 
     const byLevel = { 1: { correct: 0, total: 0 }, 2: { correct: 0, total: 0 }, 3: { correct: 0, total: 0 }, 4: { correct: 0, total: 0 } };
