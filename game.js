@@ -52,6 +52,30 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// ✅ [8] Sound + Haptic feedback helpers
+let _audioCtx = null;
+function playTone(freq, dur = 0.15, type = 'sine') {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+    const osc = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.001, _audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.25, _audioCtx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + dur);
+    osc.connect(gain); gain.connect(_audioCtx.destination);
+    osc.start(); osc.stop(_audioCtx.currentTime + dur);
+  } catch (e) { /* audio not available */ }
+}
+function feedbackHaptic(pattern) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+}
+function soundCorrect() { playTone(880, 0.12, 'triangle'); playTone(1320, 0.18, 'triangle'); feedbackHaptic(120); }
+function soundWrong()   { playTone(220, 0.25, 'sawtooth'); feedbackHaptic([60, 60, 60]); }
+function soundClick()   { playTone(520, 0.06, 'square'); }
+
 // ============================================
 // Question Generator (Reverse Generation)
 // ============================================
@@ -306,10 +330,12 @@ function submitAnswer() {
     score += 10 + speedBonus;
     feedback.className = 'feedback correct';
     feedback.textContent = '✅ ถูกต้อง! เก่งมาก!';
+    soundCorrect();
   } else {
     wrongCount++;
     feedback.className = 'feedback wrong';
     feedback.textContent = `❌ ผิด! คำตอบที่ถูกคือ x = ${q.answer}`;
+    soundWrong();
   }
 
   document.getElementById('game-score').textContent = score;
@@ -663,12 +689,13 @@ document.getElementById('btn-logout').addEventListener('click', handleLogout);
 
 document.querySelectorAll('.level-card').forEach(card => {
   card.addEventListener('click', () => {
+    soundClick();
     const level = parseInt(card.dataset.level);
     handleLevelClick(level);
   });
 });
 
-document.getElementById('btn-submit').addEventListener('click', submitAnswer);
+document.getElementById('btn-submit').addEventListener('click', () => { soundClick(); submitAnswer(); });
 document.getElementById('answer-input').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') submitAnswer();
 });
@@ -677,9 +704,11 @@ document.getElementById('btn-next-step').addEventListener('click', showNextStep)
 document.getElementById('btn-next-question').addEventListener('click', nextQuestion);
 
 document.getElementById('btn-play-again').addEventListener('click', () => {
+  soundClick();
   startGame(currentLevel);
 });
 document.getElementById('btn-home').addEventListener('click', () => {
+  soundClick();
   updateHomeUI();
   loadLeaderboard();
   loadLevelAccuracy();

@@ -442,6 +442,10 @@ body {
 .modal-buttons { display: flex; flex-direction: column; gap: 10px; }
 
 /* Responsive */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
 @media (max-width: 480px) {
   .card { padding: 24px 16px; border-radius: 18px; }
   .game-title { font-size: 1.7rem; }
