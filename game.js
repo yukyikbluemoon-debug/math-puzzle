@@ -183,8 +183,9 @@ async function handleLogin() {
     if (error) throw error;
     if (!data || data.length === 0) throw new Error('ไม่พบข้อมูลผู้เล่น');
 
-    // ✅ เก็บแค่ session token (เซิร์ฟเวอร์คืนมา) ไม่เก็บ PIN ดิบ
-    currentUser = { ...data[0], token: data[0].token };
+    // ✅ rollback ชั่วคราว: Supabase ยังคืน pin (ยังไม่มีระบบ token)
+    //    TODO: เมื่อทำระบบ token+RLS เสร็จ ให้กลับมาใช้ token
+    currentUser = { ...data[0], pin };
 
     updateHomeUI();
     showScreen('screen-home');
@@ -431,7 +432,7 @@ async function updateScore(xpGained) {
     // แทนที่จะให้ client เขียนค่า xp/level ตรงเข้าตารางแบบเดิม
     const { data, error } = await db.rpc('math_submit_result', {
       p_score_id: currentUser.id,
-      p_token: currentUser.token,   // ✅ ใช้ token แทน pin
+      p_pin: currentUser.pin,
       p_xp_gain: xpGained,
       p_correct: correctCount
     });
@@ -459,7 +460,7 @@ async function logAttempt(level, isCorrect) {
   try {
     const { error } = await db.rpc('math_log_attempt', {
       p_score_id: currentUser.id,
-      p_token: currentUser.token,   // ✅ ใช้ token แทน pin
+      p_pin: currentUser.pin,
       p_level: level,
       p_is_correct: isCorrect
     });
@@ -487,7 +488,7 @@ async function loadStats() {
     // ดึงประวัติการตอบของ "ตัวเอง" ผ่าน RPC ที่ตรวจ pin ฝั่งเซิร์ฟเวอร์
     const { data, error } = await db.rpc('math_get_attempts', {
       p_score_id: currentUser.id,
-      p_token: currentUser.token   // ✅ ใช้ token แทน pin
+      p_pin: currentUser.pin
     });
 
     if (error) throw error;
@@ -610,7 +611,7 @@ async function loadLevelAccuracy() {
   try {
     const { data, error } = await db.rpc('math_get_attempts', {
       p_score_id: currentUser.id,
-      p_token: currentUser.token   // ✅ ใช้ token แทน pin
+      p_pin: currentUser.pin
     });
     if (error) throw error;
 
