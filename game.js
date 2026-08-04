@@ -2,8 +2,10 @@
 // Supabase Config - ใช้โปรเจคเดียวกับ WordPuzzle
 // ============================================
 const SUPABASE_URL = 'https://pwrhnmvhwhellfbznczb.supabase.co';
-// ⚠️ อย่าลืมใส่ ANON KEY จริงของคุณตรงนี้ (เอา placeholder ออก)
-const SUPABASE_ANON_KEY = 'sb_publishable_zmIZ9aucZsRMJrySDe0uIQ_W4OgndeO';
+// ✅ ดึง key จาก config.js (ไฟล์ไม่ commit เข้า git — เพิ่มใน .gitignore)
+//    สำคัญ: ต้องเปิด Row Level Security (RLS) ใน Supabase dashboard ไม่งั้นคนอื่นอ่านได้
+const SUPABASE_ANON_KEY = window.__MATH_APP_CONFIG__?.SUPABASE_ANON_KEY
+  || 'sb_publishable_zmIZ9aucZsRMJrySDe0uIQ_W4OgndeO'; // fallback
 
 // ✅ แก้ไข: ใช้ชื่อตัวแปรว่า 'db' แทน 'supabase' เพื่อป้องกันชื่อชนกับ Global Object
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -21,6 +23,7 @@ let wrongCount = 0;
 let startTime = null;
 let timerInterval = null;
 let currentStep = 0;
+let questionStartTime = null; // ✅ เวลาเริ่มตอบแต่ละข้อ (ใช้คำนวณ speed bonus)
 let solutionSteps = [];
 let levelAccuracyCache = {};
 let isSubmitting = false; // กันกดปุ่มส่งคำตอบรัว ๆ เพื่อปั้มคะแนน
@@ -94,13 +97,16 @@ function generateQuestion(level) {
       break;
 
     case 4: // ax + b = cx + d
-      a = randInt(2, 6);
-      c = randInt(2, 6);
-      while (c === a) c = randInt(2, 6);
       x = randInt(1, 8);
       b = randInt(1, 10);
-      d = (a - c) * x + b;
-      if (d < 1 || d > 20) return generateQuestion(level);
+      let tries = 0;
+      do {
+        a = randInt(2, 6);
+        c = randInt(2, 6);
+        while (c === a) c = randInt(2, 6);
+        d = (a - c) * x + b;
+        tries++;
+      } while ((d < 1 || d > 20) && tries < 50); // ✅ จำกัดรอบ กัน infinite loop
       
       equation = `${a}x + ${b} = ${c}x + ${d}`;
       const leftCoeff = a - c;
@@ -153,8 +159,8 @@ async function handleLogin() {
     if (error) throw error;
     if (!data || data.length === 0) throw new Error('ไม่พบข้อมูลผู้เล่น');
 
-    // เก็บ pin ไว้ในเครื่อง (จากที่ผู้เล่นพิมพ์เอง ไม่ใช่จากเซิร์ฟเวอร์) เพื่อยืนยันตัวตนกับ RPC อื่นๆ ต่อไป
-    currentUser = { ...data[0], pin };
+    // ✅ เก็บแค่ session token (เซิร์ฟเวอร์คืนมา) ไม่เก็บ PIN ดิบ
+    currentUser = { ...data[0], token: data[0].token };
 
     updateHomeUI();
     showScreen('screen-home');
@@ -261,6 +267,7 @@ function showQuestion() {
   document.getElementById('game-progress').textContent = `${currentQuestionIndex + 1}/5`;
   document.getElementById('game-score').textContent = score;
   document.getElementById('equation-display').textContent = q.equation;
+  questionStartTime = Date.now(); // ✅ จับเวลาเริ่มตอบแต่ละข้อ
   document.getElementById('answer-input').value = '';
   document.getElementById('feedback').className = 'feedback';
   document.getElementById('feedback').textContent = '';
@@ -294,7 +301,9 @@ function submitAnswer() {
 
   if (isCorrect) {
     correctCount++;
-    score += 10 + Math.max(0, 5 - currentQuestionIndex);
+    const elapsedSec = Math.floor((Date.now() - questionStartTime) / 1000);
+    const speedBonus = Math.max(0, 5 - elapsedSec); // ตอบภายใน 5 วินาที ได้ bonus เต็ม
+    score += 10 + speedBonus;
     feedback.className = 'feedback correct';
     feedback.textContent = '✅ ถูกต้อง! เก่งมาก!';
   } else {
@@ -345,8 +354,8 @@ function showNextStep() {
   stepDiv.className = `solution-step ${step.final ? 'final' : ''}`;
   stepDiv.innerHTML = `
     <div class="step-number">ขั้นตอนที่ ${currentStep + 1}</div>
-    <div class="step-explanation">${step.explanation}</div>
-    <div class="step-equation">${step.equation}</div>
+    <div class="step-explanation">${escapeHtml(step.explanation)}</div>
+    <div class="step-equation">${escapeHtml(step.equation)}</div>
   `;
   stepsEl.appendChild(stepDiv);
 
@@ -396,7 +405,7 @@ async function updateScore(xpGained) {
     // แทนที่จะให้ client เขียนค่า xp/level ตรงเข้าตารางแบบเดิม
     const { data, error } = await db.rpc('math_submit_result', {
       p_score_id: currentUser.id,
-      p_pin: currentUser.pin,
+      p_token: currentUser.token,   // ✅ ใช้ token แทน pin
       p_xp_gain: xpGained,
       p_correct: correctCount
     });
@@ -424,7 +433,7 @@ async function logAttempt(level, isCorrect) {
   try {
     const { error } = await db.rpc('math_log_attempt', {
       p_score_id: currentUser.id,
-      p_pin: currentUser.pin,
+      p_token: currentUser.token,   // ✅ ใช้ token แทน pin
       p_level: level,
       p_is_correct: isCorrect
     });
@@ -452,7 +461,7 @@ async function loadStats() {
     // ดึงประวัติการตอบของ "ตัวเอง" ผ่าน RPC ที่ตรวจ pin ฝั่งเซิร์ฟเวอร์
     const { data, error } = await db.rpc('math_get_attempts', {
       p_score_id: currentUser.id,
-      p_pin: currentUser.pin
+      p_token: currentUser.token   // ✅ ใช้ token แทน pin
     });
 
     if (error) throw error;
@@ -575,7 +584,7 @@ async function loadLevelAccuracy() {
   try {
     const { data, error } = await db.rpc('math_get_attempts', {
       p_score_id: currentUser.id,
-      p_pin: currentUser.pin
+      p_token: currentUser.token   // ✅ ใช้ token แทน pin
     });
     if (error) throw error;
 

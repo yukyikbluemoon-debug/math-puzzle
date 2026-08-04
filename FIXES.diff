@@ -1,0 +1,166 @@
+# ============================================================
+# math-puzzle/game.js — Diff แก้จุดบกพร่อง
+# เขียนโดยเหมียว (แนะนำแก้ตามลำดับ 1→5)
+# วิธีใช้: ก๊อปแต่ละ block ไปแทนใน game.js
+# หรือใช้ 'git apply' ถ้า clone repo มาเป็น git
+# ============================================================
+
+# ------------------------------------------------------------
+# [1] ซ่อน Supabase key (บรรทัด 4-6)
+#     หมายเหตุ: client-side JS ซ่อนเต็มที่ไม่ได้ เพราะมันต้องโหลดในเบราว์เซอร์
+#     วิธีที่ถูก = ดึงจากไฟล์ config แยก (ไม่ commit) + เปิด RLS ใน Supabase dashboard
+#     ด้านล่างแสดงวิธีแยก key ออกจากโค้ดหลัก
+# ------------------------------------------------------------
+# @@ เดิม
+# const SUPABASE_URL = 'https://pwrhnmvhwhellfbznczb.supabase.co';
+# // ⚠️ อย่าลืมใส่ ANON KEY จริงของคุณตรงนี้ (เอา placeholder ออก)
+# const SUPABASE_ANON_KEY = 'sb_publishable_zmIZ9aucZsRMJrySDe0uIQ_W4OgndeO';
+# @@ ใหม่
+# const SUPABASE_URL = 'https://pwrhnmvhwhellfbznczb.supabase.co';
+# // ✅ ดึง key จาก config.js (ไฟล์นี้ไม่ต้อง commit เข้า git — เพิ่มใน .gitignore)
+# //    หรือถ้า deploy แบบ static ให้แทนที่ด้วย key ของคุณตรงนี้ก็ได้
+# //    สำคัญ: ต้องเปิด Row Level Security (RLS) ใน Supabase dashboard ไม่งั้นคนอื่นอ่านได้
+# const SUPABASE_ANON_KEY = window.__MATH_APP_CONFIG__?.SUPABASE_ANON_KEY
+#   || 'sb_publishable_zmIZ9aucZsRMJrySDe0uIQ_W4OgndeO'; // fallback (ควรเปลี่ยนเป็นค่าว่างถ้าปลอดภัย)
+
+# ------------------------------------------------------------
+# [2] PIN → Session Token (บรรทัด 157, 399, 427, 455)
+#     เปลี่ยนจากเก็บ PIN ทั้งตัว มาเก็บแค่ session token ที่เซิร์ฟเวอร์คืนให้
+#     ต้องแก้ RPC math_login ฝั่ง Supabase ด้วย (คืน token แทน PIN)
+#     ด้านล่างคือฝั่ง client — สมมติ RPC คืน field 'token'
+# ------------------------------------------------------------
+# @@ handleLogin เดิม (บรรทัด 156-157)
+#     // เก็บ pin ไว้ในเครื่อง (จากที่ผู้เล่นพิมพ์เอง ไม่ใช่จากเซิร์ฟเวอร์) เพื่อยืนยันตัวตนกับ RPC อื่นๆ ต่อไป
+#     currentUser = { ...data[0], pin };
+# @@ ใหม่
+#     // ✅ เก็บแค่ session token (เซิร์ฟเวอร์คืนมา) ไม่เก็บ PIN ดิบ
+#     currentUser = { ...data[0], token: data[0].token };
+
+# @@ updateScore เดิม (บรรทัด 397-402)
+#     const { data, error } = await db.rpc('math_submit_result', {
+#       p_score_id: currentUser.id,
+#       p_pin: currentUser.pin,
+#       p_xp_gain: xpGained,
+#       p_correct: correctCount
+#     });
+# @@ ใหม่
+#     const { data, error } = await db.rpc('math_submit_result', {
+#       p_score_id: currentUser.id,
+#       p_token: currentUser.token,   // ✅ ใช้ token แทน pin
+#       p_xp_gain: xpGained,
+#       p_correct: correctCount
+#     });
+
+# @@ logAttempt เดิม (บรรทัด 425-430)
+#     const { error } = await db.rpc('math_log_attempt', {
+#       p_score_id: currentUser.id,
+#       p_pin: currentUser.pin,
+#       p_level: level,
+#       p_is_correct: isCorrect
+#     });
+# @@ ใหม่
+#     const { error } = await db.rpc('math_log_attempt', {
+#       p_score_id: currentUser.id,
+#       p_token: currentUser.token,   // ✅ ใช้ token แทน pin
+#       p_level: level,
+#       p_is_correct: isCorrect
+#     });
+
+# @@ loadStats / loadLevelAccuracy เดิม (บรรทัด 453-456, 576-579)
+#     const { data, error } = await db.rpc('math_get_attempts', {
+#       p_score_id: currentUser.id,
+#       p_pin: currentUser.pin
+#     });
+# @@ ใหม่
+#     const { data, error } = await db.rpc('math_get_attempts', {
+#       p_score_id: currentUser.id,
+#       p_token: currentUser.token   // ✅ ใช้ token แทน pin
+#     });
+
+# ------------------------------------------------------------
+# [3] สูตรคะแนนให้ตรงความหมาย (บรรทัด 297)
+#     ของเดิม: score += 10 + Math.max(0, 5 - currentQuestionIndex)
+#     → currentQuestionIndex คงที่ในข้อเดียวกัน → bonus ไม่ตรงความเร็ว
+#     ใหม่: ใช้เวลาตอบจริง (วินาที) มาคำนวณ bonus เร็วได้คะแนนมาก
+# ------------------------------------------------------------
+# @@ เดิม
+#     score += 10 + Math.max(0, 5 - currentQuestionIndex);
+# @@ ใหม่
+#     const elapsedSec = Math.floor((Date.now() - questionStartTime) / 1000);
+#     const speedBonus = Math.max(0, 5 - elapsedSec); // ตอบภายใน 5 วินาที ได้ bonus เต็ม
+#     score += 10 + speedBonus;
+
+# (ต้องเพิ่มตัวแปร questionStartTime ใน showQuestion)
+# @@ showQuestion เดิม (เพิ่มบรรทัดหลังบรรทัด 263)
+#   document.getElementById('equation-display').textContent = q.equation;
+# @@ ใหม่ (เติมบรรทัด)
+#   document.getElementById('equation-display').textContent = q.equation;
+#   questionStartTime = Date.now(); // ✅ จับเวลาเริ่มตอบแต่ละข้อ
+
+# (ประกาศตัวแปร global ใกล้บรรทัด 23)
+# @@ เดิม
+# let currentStep = 0;
+# @@ ใหม่
+# let currentStep = 0;
+# let questionStartTime = null; // ✅ เวลาเริ่มตอบแต่ละข้อ (ใช้คำนวณ speed bonus)
+
+# ------------------------------------------------------------
+# [4] recursion → while loop (บรรทัด 96-116, case 4)
+#     ของเดิม: if (d < 1 || d > 20) return generateQuestion(level);
+#     → ถ้ารุ่นแย่สุด เรียกซ้ำ不限 (theoretically infinite)
+#     ใหม่: วนหา d ที่ถูกต้องใน loop
+# ------------------------------------------------------------
+# @@ case 4 เดิม (บรรทัด 96-116)
+#     case 4: // ax + b = cx + d
+#       a = randInt(2, 6);
+#       c = randInt(2, 6);
+#       while (c === a) c = randInt(2, 6);
+#       x = randInt(1, 8);
+#       b = randInt(1, 10);
+#       d = (a - c) * x + b;
+#       if (d < 1 || d > 20) return generateQuestion(level);
+#
+#       equation = `${a}x + ${b} = ${c}x + ${d}`;
+#       const leftCoeff = a - c;
+#       const rightConst = d - b;
+# @@ ใหม่
+#     case 4: // ax + b = cx + d
+#       x = randInt(1, 8);
+#       b = randInt(1, 10);
+#       let tries = 0;
+#       do {
+#         a = randInt(2, 6);
+#         c = randInt(2, 6);
+#         while (c === a) c = randInt(2, 6);
+#         d = (a - c) * x + b;
+#         tries++;
+#       } while ((d < 1 || d > 20) && tries < 50); // ✅ จำกัดรอบ กัน infinite loop
+#       // ถ้าเกิน 50 รอบยังไม่ได้ ค่าจะคลุมเครือแต่ไม่พังแอป
+#       // ... เหลือเหมือนเดิม (equation, steps)
+
+# ------------------------------------------------------------
+# [5] escapeHtml ให้สม่ำเสมอ (บรรทัด 346-350)
+#     ของเดิมใช้ template โดยไม่ escape → ถ้าอนาคตดึงจาก DB จะ XSS
+#     ใหม่: หุ้ม escapeHtml ทุกจุดที่แสดงข้อความจาก data
+# ------------------------------------------------------------
+# @@ showNextStep เดิม (บรรทัด 346-350)
+#   stepDiv.innerHTML = `
+#     <div class="step-number">ขั้นตอนที่ ${currentStep + 1}</div>
+#     <div class="step-explanation">${step.explanation}</div>
+#     <div class="step-equation">${step.equation}</div>
+#   `;
+# @@ ใหม่
+#   stepDiv.innerHTML = `
+#     <div class="step-number">ขั้นตอนที่ ${currentStep + 1}</div>
+#     <div class="step-explanation">${escapeHtml(step.explanation)}</div>
+#     <div class="step-equation">${escapeHtml(step.equation)}</div>
+#   `;
+
+# ============================================================
+# สิ่งที่ต้องทำเพิ่มนอกโค้ด (สำคัญเท่ากัน):
+#  A. Supabase Dashboard → เปิด RLS สำหรับตาราง accounts/math_scores/math_attempts
+#     และตั้ง policy ให้ anon อ่านได้แค่ผ่าน RPC (SECURITY DEFINER)
+#  B. แก้ RPC math_login ให้คืน field 'token' (JWT หรือ UUID เชื่อมกับ session ฝั่งเซิร์ฟเวอร์)
+#     แล้วแก้ math_submit_result / math_log_attempt / math_get_attempts รับ p_token แทน p_pin
+#  C. เพิ่ม config.js (ไม่ commit) สำหรับเก็บ SUPABASE_ANON_KEY แยก
+# ============================================================
